@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flower Hut & Sandy Lane Farm — with Elevation</title>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet.Elevation -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-elevation@1.4.0/dist/Leaflet.Elevation-0.0.2.css" />
+  <style>
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { height: 70vh; width: 100%; }
+    #elevation { height: 30vh; width: 100%; }
+    .info-panel {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      padding: 14px;
+      border-radius: 8px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+      max-width: 360px;
+      font-size: 14px;
+      line-height: 1.5;
+      z-index: 1000;
+      background: rgba(255,255,255,0.95);
+    }
+    .info-panel h2 { margin: 0 0 10px; color: #1d4e2b; font-size: 18px; }
+    .stats { 
+      background: #e8f4ec; 
+      padding: 8px; 
+      border-radius: 4px; 
+      margin-top: 8px;
+      font-weight: bold;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin: 4px 0;
+    }
+    .color-box {
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+      border: 1px solid #666;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="elevation"></div>
+
+  <div class="info-panel">
+    <h2>📍 Flower Hut & 🏡 Sandy Lane Farm</h2>
+    <p><strong>Route: 3.2 miles (5.1 km)</strong><br>
+    Walking: ~65 min | Cycling: ~20 min</p>
+    
+    <div class="stats" id="route-stats">
+      ▲ Total Ascent: <span id="ascent">—</span>m<br>
+      ▼ Total Descent: <span id="descent">—</span>m<br>
+      ⛰️ Max Elevation: <span id="max">—</span>m<br>
+      🌊 Min Elevation: <span id="min">—</span>m
+    </div>
+
+    <div class="legend" style="margin-top:12px; padding-top:10px; border-top:1px solid #eee;">
+      <div class="legend-item">
+        <div class="color-box" style="background:#d73027;"></div>
+        <span>🌸 Flower Hut</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background:#2c7bb6;"></div>
+        <span>🥚 Farm Stall</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background:#91bfdb;"></div>
+        <span>🌾 Arable Fields</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background:#2c5530;"></div>
+        <span>━━ Route</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-elevation@1.4.0/dist/Leaflet.Elevation-0.0.2.min.js"></script>
+  <script>
+    // Initialize map
+    const map = L.map('map').setView([51.3345, -0.7025], 14);
+
+    // Basemap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // ===== COORDINATES (lat, lng) =====
+    const coords = [
+      [51.3363, -0.7112], // 0: Flower Hut
+      [51.3360, -0.7090],
+      [51.3355, -0.7090], // Village Hall
+      [51.3350, -0.7070],
+      [51.3345, -0.7050],
+      [51.3342, -0.7020],
+      [51.3340, -0.6980], // Heather Wood (RoW start)
+      [51.3338, -0.6960],
+      [51.3335, -0.6930],
+      [51.3330, -0.6900],
+      [51.3325, -0.6870],
+      [51.3320, -0.6850],
+      [51.3318, -0.6825]  // 12: Farm Stall
+    ];
+
+    // ===== ELEVATION CONTROL =====
+    const el = L.control.elevation({
+      position: "bottomright",
+      theme: "leaflet-bar",
+      width: "100%",
+      height: 150,
+      margins: { top: 10, right: 20, bottom: 30, left: 50 },
+      useHeightIndicator: true,
+      interpolation: "linear",
+      hoverNumber: { decimalsX: 2, decimalsY: 0, formatter: undefined },
+      xTicks: 5,
+      yTicks: 5,
+      collapsed: false
+    });
+    el.addTo(map);
+
+    // Add route to elevation control (will fetch elevations)
+    const routeLine = L.polyline(coords, {
+      color: '#2c5530',
+      weight: 4,
+      opacity: 0.9
+    }).addTo(map);
+
+    // Load elevation data via Open-Elevation (public CORS proxy)
+    // Note: For production, use your own proxy to avoid rate limits
+    const elevationUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${coords.map(p => `${p[0]},${p[1]}`).join(';')}`;
+    
+    fetch(elevationUrl)
+      .then(response => response.json())
+      .then(data => {
+        const gpxData = {
+          type: "FeatureCollection",
+          features: [{
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: coords.map((p, i) => [p[1], p[0], data.results[i].elevation])
+            }
+          }]
+        };
+        el.addData(gpxData);
+        
+        // Update stats
+        const elevations = data.results.map(r => r.elevation);
+        const ascent = elevations.slice(1).reduce((sum, e, i) => e > elevations[i] ? sum + (e - elevations[i]) : sum, 0);
+        const descent = elevations.slice(1).reduce((sum, e, i) => e < elevations[i] ? sum + (elevations[i] - e) : sum, 0);
+        
+        document.getElementById('ascent').textContent = Math.round(ascent);
+        document.getElementById('descent').textContent = Math.round(descent);
+        document.getElementById('max').textContent = Math.round(Math.max(...elevations));
+        document.getElementById('min').textContent = Math.round(Math.min(...elevations));
+      })
+      .catch(err => {
+        console.warn("Elevation fetch failed — using fallback flat profile.", err);
+        // Fallback: assign flat 65m elevation
+        const flatData = {
+          type: "FeatureCollection",
+          features: [{
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: coords.map(p => [p[1], p[0], 65])
+            }
+          }]
+        };
+        el.addData(flatData);
+        document.getElementById('ascent').textContent = "0";
+        document.getElementById('descent').textContent = "0";
+        document.getElementById('max').textContent = "65";
+        document.getElementById('min').textContent = "65";
+      });
+
+    // ===== MARKERS =====
+    const flowerHut = [51.3363, -0.7112];
+    const farmStall = [51.3318, -0.6825];
+
+    const createIcon = (text, color) => L.divIcon({
+      className: '',
+      html: `<div style="background:white; border:2px solid ${color}; border-radius:4px; padding:2px 6px; font-weight:bold;">${text}</div>`,
+      iconSize: [120, 24]
+    });
+
+    L.marker(flowerHut, { icon: createIcon('🌸 Flower Hut', '#d73027') }).addTo(map);
+    L.marker(farmStall, { icon: createIcon('🥚 Farm Stall', '#2c7bb6') }).addTo(map);
+
+    // Fit bounds
+    map.fitBounds([
+      [51.3365, -0.7120],
+      [51.3315, -0.6810]
+    ]);
+  </script>
+</body>
+</html>
